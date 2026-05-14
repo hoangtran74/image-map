@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <title>Map Viewer</title>
+  <link rel="icon" type="image/x-icon" href="favicon.gif">
+  <link rel="stylesheet" href="styles.css">
+</head>
+
+<body>
+<!-- Top Navigation -->
+<nav id="topNav">
+  <div class="nav-left">
+    <h1>Map Viewer</h1>
+
+    <div id="checkboxes" class="checkbox-container"></div>
+  </div>
+
+  <div class="nav-center">
+    <button id="drawLine">Line</button>
+    <button id="drawCircle">Circle</button>
+    <button id="drawPoly" style="display:none;">Polygon</button>
+    <button id="drawSelect">Select</button>
+    <button id="drawDelete">Delete</button>
+  </div>
+
+  <div class="nav-right">
+    <label for="importFile" id="importLabel">Import</label>
+    <input type="file" id="importFile" style="display:none;" multiple>
+    <button id="exportBtn">Export JSON</button>
+  </div>
+</nav>
+
+
+<!-- Sidebar -->
+<div id="sidebar">
+  <button class="sideToolBtn" data-popup="cvsPopup">CSV Normalizer</button>
+  <button class="sideToolBtn" data-popup="baselinePopup">Data Conversion</button>
+
+  <select id="filterCategory">
+      <option value="all">All</option>
+      <option value="📍">📍 Default Pin</option>
+      <option value="⭐">⭐ Star</option>
+      <option value="⚓">⚓ Naval</option>
+      <option value="✈️">✈️ Airfield</option>
+      <option value="🛡️">🛡️ Military</option>
+    </select>
+    <input id="searchBox" type="text" placeholder="Search markers...">
+  <div id="markerList"></div>
+
+</div>
+
+<!-- Map Container -->
+<div id="mapContainer">
+  <canvas id="mapCanvas"></canvas>
+  <canvas id="heatCanvas"></canvas>
+  <canvas id="miniMap" width="180" height="140"></canvas>
+</div>
+
+<!-- Marker Form -->
+<div id="markerForm">
+  <h3 id="formTitle">Add Marker</h3>
+   <div class="marker-actions">
+      <label>Latitude</label>
+      <input id="formLat" type="text" readonly/>
+      <label>Longitude</label>
+      <input id="formLon" type="text" readonly/>
+  </div>
+
+  <label>Name</label>
+  <input id="formName" type="text">
+
+  <label>Description</label>
+  <textarea id="formDesc"></textarea>
+
+  <label>Classification</label>
+  <input id="formClass" type="text">
+
+  <label>Icon</label>
+  <select id="formIcon">
+    <option value="">(Use category default)</option>
+    <option value="📍">📍 Default Pin</option>
+    <option value="⭐">⭐ Star</option>
+    <option value="⚓">⚓ Naval</option>
+    <option value="✈️">✈️ Airfield</option>
+    <option value="🛡️">🛡️ Military</option>
+  </select>
+
+  <label style="display:none;">Upload Custom Icon (PNG/SVG)</label>
+  <input id="formIconUpload" type="file" accept=".png,.svg" style="display:none;">
+
+  <button id="formSubmit" type="button">Submit</button>
+  <button id="formCancel" type="button">Cancel</button>
+</div>
+
+<!-- Popup: CSV Handler -->
+<div id="cvsPopup" class="popup">
+  <div class="popup-content">
+    <span class="popup-close" data-close="cvsPopup">&times;</span>
+    <iframe src="csvHandler.html"></iframe>
+  </div>
+</div>
+
+<!-- Popup: Data Conversion -->
+<div id="baselinePopup" class="popup">
+  <div class="popup-content">
+    <span class="popup-close" data-close="baselinePopup">&times;</span>
+    <iframe src="baseline.html"></iframe>
+  </div>
+</div>
+
+
+<!-- Coordinate Readout -->
+<div id="coordReadout">Lat: — , Lon: —</div>
+<script src="map.js"></script>
+<script src="maptool.js"></script>
+<script>
+document.querySelectorAll(".sideToolBtn").forEach(btn => {
+  btn.addEventListener("click", () => {
+    const popupId = btn.getAttribute("data-popup");
+    document.getElementById(popupId).style.display = "flex";
+  });
+});
+
+document.querySelectorAll(".popup-close").forEach(closeBtn => {
+  closeBtn.addEventListener("click", () => {
+    const popupId = closeBtn.getAttribute("data-close");
+    document.getElementById(popupId).style.display = "none";
+  });
+});
+
+// Close popup when clicking outside content
+document.querySelectorAll(".popup").forEach(popup => {
+  popup.addEventListener("click", (e) => {
+    if (e.target === popup) popup.style.display = "none";
+  });
+});
+</script>
+
+</body>
+</html>

@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>CSV Editor with Merge, Move Columns, Sort, Drag-Fill, Dedupe, Export</title>
+<style>
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    table { border-collapse: collapse; margin-top: 15px; }
+    th, td { border: 1px solid #ccc; padding: 5px 10px; }
+    th { background: #f4f4f4; user-select: none; }
+    td[contenteditable="true"] { background: #fff8dc; cursor: pointer; }
+    td.source { background: #ffecb3 !important; }
+    td.selected { background: #cce5ff !important; }
+    .sort-icon { margin-left: 5px; font-size: 0.8em; cursor: pointer; }
+    th button { margin-left: 5px; padding: 2px 5px; }
+    .merge-controls { margin-top: 15px; display: none; }
+</style>
+</head>
+<body>
+
+<h2>CSV Editor with Merge, Move Columns, Sort, Drag-Fill, Dedupe, and Export</h2>
+<h3><i>Usage:  The CSV file must have atleast 3 column header fields in this order:  Customer or Owner, system, and installation<br>
+Skip number of rows that contains a classification marking or blank row before the columns headers</i></h2>
+
+<input type="file" id="csvFile" accept=".csv">
+
+<label>Skip rows:</label>
+<select id="skipRows">
+  <option value="0">Skip 0</option>
+  <option value="1">Skip 1</option>
+  <option value="2">Skip 2</option>
+  <option value="3">Skip 3</option>
+</select>
+
+<button id="parseBtn">Parse CSV</button>
+
+<div id="columnSelection"></div>
+<button id="showTableBtn" style="display:none;">Show Table</button>
+
+<div class="merge-controls" id="mergeControls">
+    <h3>Merge Columns</h3>
+    <label>Target Column:</label>
+    <select id="mergeTarget"></select>
+
+    <label style="margin-left:20px;">Mode:</label>
+    <select id="mergeMode">
+        <option value="paren">value1 (value2)</option>
+        <option value="dash">value1 - value2</option>
+        <option value="colon">value1: value2</option>
+    </select>
+
+    <button id="mergeBtn">Merge Selected Columns</button>
+
+</div>
+<hr>
+<button id="dedupeBtn" style="display:none;">Remove Duplicates</button>
+<button id="cancelBtn" style="display:none;">Cancel Selection</button>
+<button id="exportBtn" style="display:none;">Export CSV</button>
+
+<div id="tableContainer"></div>
+
+<script>
+function parseCSV(csvText) {
+
+    const skip = parseInt(document.getElementById("skipRows").value, 10);
+
+    const lines = csvText.trim().split(/\r?\n/);
+    const headers = lines[skip].split(",").map(h => h.trim());
+    const rows = lines.slice(1).map(line => {
+        const values = line.split(",").map(v => v.trim());
+        return headers.reduce((obj, header, i) => {
+            obj[header] = values[i] || "";
+            return obj;
+        }, {});
+    });
+    return { headers, rows };
+}
+
+function tableToCSV(headers, table) {
+    const csvRows = [];
+    csvRows.push(headers.join(","));
+
+    const trs = table.querySelectorAll("tbody tr");
+
+    trs.forEach(tr => {
+        const tds = tr.querySelectorAll("td[data-col]");
+
+        const row = Array.from(tds).map(td => {
+            let text = td.textContent.trim().replace(/"/g, '""');
+
+            // Only wrap in quotes if the text contains a comma
+            if (text.includes(",")) {
+                text = `"${text}"`;
+            }
+
+            return text;
+        });
+
+        csvRows.push(row.join(","));
+    });
+
+    return csvRows.join("\n");
+}
+
+
+let parsedData = { headers: [], rows: [] };
+
+document.getElementById("parseBtn").addEventListener("click", () => {
+    const file = document.getElementById("csvFile").files[0];
+    if (!file) return alert("Select a CSV first.");
+
+    const reader = new FileReader();
+    reader.onload = e => {
+        parsedData = parseCSV(e.target.result);
+
+        const sel = document.getElementById("columnSelection");
+        sel.innerHTML = "<h3>Select Columns:</h3>";
+
+        parsedData.headers.forEach(h => {
+            sel.innerHTML += `
+                <label>
+                    <input type="checkbox" value="${h}" id="col_${h}">
+                    ${h}
+                </label><br>
+            `;
+        });
+
+        document.getElementById("showTableBtn").style.display = "inline-block";
+    };
+    reader.readAsText(file);
+});
+
+document.getElementById("showTableBtn").addEventListener("click", () => {
+    const selectedCols = Array.from(document.querySelectorAll("#columnSelection input:checked"))
+        .map(cb => cb.value);
+
+    if (!selectedCols.length) return alert("Select at least one column.");
+
+    rebuildTable(selectedCols);
+    setupMergeUI(selectedCols);
+
+
+    document.getElementById("dedupeBtn").style.display = "inline-block";
+});
+
+function sortTable(table, colIndex, headerEl) {
+    const tbody = table.querySelector("tbody");
+    const rows = Array.from(tbody.querySelectorAll("tr"));
+    const currentOrder = headerEl.dataset.order || "none";
+
+    let newOrder = currentOrder === "asc" ? "desc" : "asc";
+
+    rows.sort((a, b) => {
+        const aText = a.children[colIndex].textContent.trim();
+        const bText = b.children[colIndex].textContent.trim();
+        if (!isNaN(aText) && !isNaN(bText)) {
+            return newOrder === "asc" ? aText - bText : bText - aText;
+        }
+        return newOrder === "asc"
+            ? aText.localeCompare(bText)
+            : bText.localeCompare(aText);
+    });
+
+    tbody.innerHTML = "";
+    rows.forEach(r => tbody.appendChild(r));
+
+    table.querySelectorAll("th .sort-icon").forEach(i => i.textContent = "⇅");
+    headerEl.dataset.order = newOrder;
+    headerEl.querySelector(".sort-icon").textContent = newOrder === "asc" ? "▲" : "▼";
+}
+
+function enableDragFill(table) {
+    let sourceCell = null;
+    let isDragging = false;
+    let selectedCells = [];
+
+    table.addEventListener("click", e => {
+        if (e.target.tagName === "TD") {
+            clear();
+            sourceCell = e.target;
+            sourceCell.classList.add("source");
+            document.getElementById("cancelBtn").style.display = "inline-block";
+        }
+    });
+
+    table.addEventListener("mousedown", e => {
+        if (sourceCell && e.target.tagName === "TD" && e.target !== sourceCell) {
+            isDragging = true;
+            selectedCells = [e.target];
+            e.target.classList.add("selected");
+            e.preventDefault();
+        }
+    });
+
+    table.addEventListener("mouseover", e => {
+        if (isDragging && e.target.tagName === "TD" && e.target !== sourceCell) {
+            if (!selectedCells.includes(e.target)) {
+                selectedCells.push(e.target);
+                e.target.classList.add("selected");
+            }
+        }
+    });
+
+    document.addEventListener("mouseup", () => {
+        if (isDragging && sourceCell) {
+            selectedCells.forEach(c => c.textContent = sourceCell.textContent);
+            clear();
+        }
+        isDragging = false;
+    });
+
+    document.getElementById("cancelBtn").onclick = clear;
+
+    function clear() {
+        table.querySelectorAll("td.source, td.selected")
+            .forEach(td => td.classList.remove("source", "selected"));
+        sourceCell = null;
+        selectedCells = [];
+        document.getElementById("cancelBtn").style.display = "none";
+    }
+}
+
+function moveColumn(cols, index, dir) {
+    const newIndex = index + dir;
+    if (newIndex < 0 || newIndex >= cols.length) return;
+    [cols[index], cols[newIndex]] = [cols[newIndex], cols[index]];
+    rebuildTable(cols);
+    setupMergeUI(cols);
+}
+
+function setupMergeUI(cols) {
+    const mergeControls = document.getElementById("mergeControls");
+    mergeControls.style.display = "block";
+
+    const targetSel = document.getElementById("mergeTarget");
+    targetSel.innerHTML = cols.map(c => `<option value="${c}">${c}</option>`).join("");
+
+    document.getElementById("mergeBtn").onclick = () => mergeColumns(cols);
+}
+
+function mergeColumns(cols) {
+    const checked = Array.from(document.querySelectorAll("#tableContainer th .mergeCheck:checked"))
+        .map(cb => cb.value);
+
+    if (checked.length < 2) return alert("Select at least 2 columns to merge.");
+
+    const target = document.getElementById("mergeTarget").value;
+    if (!checked.includes(target)) return alert("Target must be one of the selected columns.");
+
+    const mode = document.getElementById("mergeMode").value;
+
+    parsedData.rows.forEach(row => {
+        let merged = row[target];
+
+        checked.forEach(col => {
+            if (col === target) return;
+            const val = row[col];
+            if (!val) return;
+
+            if (mode === "paren") merged += ` (${val})`;
+            else if (mode === "dash") merged += ` - ${val}`;
+            else if (mode === "colon") merged += `: ${val}`;
+        });
+
+        row[target] = merged;
+        document.getElementById("exportBtn").style.display = "inline-block";
+    });
+
+    const newCols = cols.filter(c => !checked.includes(c) || c === target);
+
+    rebuildTable(newCols);
+    setupMergeUI(newCols);
+
+    alert("Columns merged.");
+}
+
+function rebuildTable(cols) {
+    const container = document.getElementById("tableContainer");
+    container.innerHTML = "";
+
+    const table = document.createElement("table");
+
+    const thead = document.createElement("thead");
+    const trh = document.createElement("tr");
+
+    cols.forEach((col, index) => {
+        const th = document.createElement("th");
+
+        const mergeCheck = document.createElement("input");
+        mergeCheck.type = "checkbox";
+        mergeCheck.className = "mergeCheck";
+        mergeCheck.value = col;
+        th.appendChild(mergeCheck);
+
+        const titleSpan = document.createElement("span");
+        titleSpan.textContent = " " + col + " ";
+        th.appendChild(titleSpan);
+
+        const leftBtn = document.createElement("button");
+        leftBtn.textContent = "←";
+        leftBtn.onclick = e => {
+            e.stopPropagation();
+            moveColumn(cols, index, -1);
+        };
+        th.appendChild(leftBtn);
+
+        const rightBtn = document.createElement("button");
+        rightBtn.textContent = "→";
+        rightBtn.onclick = e => {
+            e.stopPropagation();
+            moveColumn(cols, index, +1);
+        };
+        th.appendChild(rightBtn);
+
+        const sortIcon = document.createElement("span");
+        sortIcon.className = "sort-icon";
+        sortIcon.textContent = "⇅";
+        sortIcon.onclick = e => {
+            e.stopPropagation();
+            sortTable(table, index, th);
+        };
+        th.appendChild(sortIcon);
+
+        trh.appendChild(th);
+    });
+
+    thead.appendChild(trh);
+    table.appendChild(thead);
+
+    const tbody = document.createElement("tbody");
+
+    parsedData.rows.forEach(row => {
+        const tr = document.createElement("tr");
+        cols.forEach(col => {
+            const td = document.createElement("td");
+            td.contentEditable = "true";
+            td.dataset.col = col;
+            td.textContent = row[col] || "";
+            tr.appendChild(td);
+        });
+        tbody.appendChild(tr);
+    });
+
+    table.appendChild(tbody);
+    container.appendChild(table);
+
+    enableDragFill(table);
+}
+
+document.getElementById("dedupeBtn").onclick = () => {
+    const table = document.querySelector("#tableContainer table");
+    if (!table) return;
+
+    const seen = new Set();
+    table.querySelectorAll("tbody tr").forEach(row => {
+        const key = Array.from(row.querySelectorAll("td"))
+            .map(td => td.textContent.trim())
+            .join("|");
+
+        if (seen.has(key)) row.remove();
+        else seen.add(key);
+    });
+
+    alert("Duplicates removed.");
+};
+
+document.getElementById("exportBtn").onclick = () => {
+    const cols = Array.from(document.querySelectorAll("#tableContainer th span"))
+		.map(s => s.textContent.trim())
+		.filter(text => text !== "⇅");
+
+		
+	console.log(cols);	
+
+    const table = document.querySelector("#tableContainer table");
+    const csv = tableToCSV(cols, table);
+
+    const blob = new Blob([csv], { type: "text/csv" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "edited.csv";
+    a.click();
+};
+</script>
+
+</body>
+</html>

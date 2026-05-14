@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+</head>
+<body>
+
+<h3>Customer Data Input</h3>
+<label>Select CSV File:</label>
+
+<input type="file" id="csvFile" accept=".csv" />
+<br><br>
+
+<textarea id="customerInput" rows="10" style="width:100%;">
+GTRI, APPLE, Arnold
+SIAC, BANANA, Arnold AFB
+BAH, PEAR, Arnold Air Force Base
+BAH, APPLE, Vandenberg
+GTRI , ORANGE, Vandenberg SFB
+SIAC, GRAPE, Vandenberg Space Force Base
+TRX, APPLE, Dyess
+SIAC, BANANA, Dyess AFB
+BAH, PEAR, Bardsdale AFB
+TXR, APPLE, Bardsdale AFB LA
+ODYSSEY , ORANGE, Bardsdale LA
+ODYSSEY, GRAPE, Bardsdale
+</textarea>
+<br>
+<label>Skip rows (columns index if any):</label>
+<select id="skipRows">
+  <option value="0">Skip 0</option>
+  <option value="1">Skip 1</option>
+  <option value="2">Skip 2</option>
+  <option value="3">Skip 3</option>
+</select>
+<button id="runBtn">Run Script</button>
+<button id="clearBtn">Clear Input</button>
+<br>
+The Run script will parse the above data to a marker's decs field.
+<hr>
+
+<h3>Output JSON</h3>
+
+<button id="saveBtn">Save Output</button>
+<textarea id="showme" rows="30" style="width:100%;"></textarea>
+
+<script>
+const input = `
+Arnold Air Force Base,Tennessee,35.383010275479734, -86.03010529752727
+Bardsdale Air Force Base, Louisiana,32.5035, -93.6495
+Beale Air Force Base,California,39.1116, -121.3603
+Buckley Space Force Base, Colorado, 39.70298599715513, -104.75498883739343
+Dyess Air Force Base,Texas,32.4197, -99.8452
+Edwards Air Force Base,California,34.924176088972544, -117.89463871000727
+Eglin Air Force Base,Florida,30.46349771133744, -86.55321319556622
+Eielson Air Force Base,ALaska, 64.66411563111862, -147.11135844844299
+Ellsworth Air Force Base,South Dakota,44.1460,-103.0930
+Fairchild Air Force Base,Washington,47.6150,-117.6550
+Francis E. Warren Air Force Base,Wyoming,41.1390,-104.8620
+Goodfellow Air Force Base,Texas,31.4158,-100.4028
+Grand Forks Air Force Base,North Dakota,47.9490,-97.4060
+Hanscom Air Force Base,Massachusetts,42.4600,-71.2750
+Hill Air Force Base,Utah,41.1240,-111.9730
+Holloman Air Force Base,New Mexico,32.8530,-106.1070
+Kadena Air Base,Japan,26.3550,127.7670
+Keesler Air Force Base,Mississippi,30.4100,-88.9240
+Kirtland Air Force Base,New Mexico,35.0500,-106.6170
+Laughlin Air Force Base,Texas,29.3590,-100.7840
+Little Rock Air Force Base,Arkansas,34.9160,-92.1460
+Los Angeles Air Force Base,California,33.9200,-118.3270
+Luke Air Force Base,Arizona,33.5350,-112.3830
+MacDill Air Force Base,Florida,27.96354885959152, -82.51319839073761
+Malmstrom Airforce Base,Montana, 47.504559364947774, -111.18003278508432
+Maxwell Air Force Base,Alabama,32.3820,-86.3650
+McConnell Air Force Base,Kansas,37.6310,-97.2680
+Minot Air Force Base,North Dakota,48.4150,-101.3580
+Misawa Air Base,Japan,40.7030,141.3680
+Moody Air Force Base,Georgia,30.9670,-83.1930
+Mountain Home Air Force Base,Idaho,43.0430,-115.8720
+Nellis Air Force Base,Nevada,36.2360,-115.0330
+Offutt Air Force Base,Nebraska,41.1180,-95.9120
+Osan Air Base,South Korea,37.0900,127.0300
+Patrick Space Force Base,Florida,28.2340,-80.6070
+Peterson Space Force Base,Colorado,38.8250,-104.7000
+Ramstein Air Base,Germany,49.4447,7.6000
+Randolph Air Force Base, Texas, 29.532135864140994, -98.2832415564246
+Robins Air Force Base,Georgia,32.6400,-83.5910
+Schriever Space Force Base,Colorado,38.8030,-104.5250
+Scott Air Force Base,Illinois,38.5420,-89.8350
+Seymour Johnson Air Force Base,North Carolina,35.3390,-77.9600
+Shaw Air Force Base,South Carolina,33.9720,-80.4700
+Sheppard Air Force Base,Texas,33.9650,-98.4920
+Tinker Air Force Base,Oklahoma,35.4140,-97.3860
+Travis Air Force Base,California,38.2620,-121.9270
+Tydall Air Force Base,FLorida, 30.056648687950634, -85.53650589339485
+Vandenberg Space Force Base,California,34.7420,-120.5720
+Whiteman Air Force Base,Missouri,38.7300,-93.5480
+Wright-Patterson Air Force Base,Ohio,39.8260,-84.0480
+Yokota Air Base,Japan,35.7480,139.3480
+`.trim();
+
+const states = {
+  "Alabama":"AL","Alaska":"AK","Arizona":"AZ","Arkansas":"AR","California":"CA",
+  "Colorado":"CO","Connecticut":"CT","Delaware":"DE","Florida":"FL","Georgia":"GA",
+  "Hawaii":"HI","Idaho":"ID","Illinois":"IL","Indiana":"IN","Iowa":"IA",
+  "Kansas":"KS","Kentucky":"KY","Louisiana":"LA","Maine":"ME","Maryland":"MD",
+  "Massachusetts":"MA","Michigan":"MI","Minnesota":"MN","Mississippi":"MS",
+  "Missouri":"MO","Montana":"MT","Nebraska":"NE","Nevada":"NV","New Hampshire":"NH",
+  "New Jersey":"NJ","New Mexico":"NM","New York":"NY","North Carolina":"NC",
+  "North Dakota":"ND","Ohio":"OH","Oklahoma":"OK","Oregon":"OR","Pennsylvania":"PA",
+  "Rhode Island":"RI","South Carolina":"SC","South Dakota":"SD","Tennessee":"TN",
+  "Texas":"TX","Utah":"UT","Vermont":"VT","Virginia":"VA","Washington":"WA",
+  "West Virginia":"WV","Wisconsin":"WI","Wyoming":"WY"
+};
+
+const icons = ["✈️","🛡️"];
+const fruits = ["APPLE", "BANANA", "CHERRY"];
+const fruits2 = ["GRAPE", "LEMON", "PEAR"];
+
+function abbreviateBase(name) {
+  return name
+    .replace("Air Force Base", "AFB")
+    .replace("Air Base", "AB")
+    .replace("Space Force Base", "SFB");
+}
+
+function getRandomElement(arr) {
+  return arr[Math.floor(Math.random() * arr.length)];
+}
+
+function extractUniqueValues(raw, searchValue) {
+  if (!raw || raw.trim() === "") {
+    return "";
+  }
+
+  const rows = raw
+    .trim()
+    .split("\n")
+    .map(line => line.split(",").map(x => x.trim()));
+
+  const map = new Map();
+
+  rows.forEach(([col1, col2, col3]) => {
+    if (col3.includes(searchValue.split(/\s+/)[0])) {
+      if (!map.has(col1)) {
+        map.set(col1, new Set());
+      }
+      map.get(col1).add(col2);
+    }
+  });
+
+  let result = "";
+  for (const [col2, col3Set] of map.entries()) {
+    const list = [...col3Set].join(" ");
+    result += `- ${col2}: ${list}\n`;
+  }
+
+  return result.trim();
+}
+
+document.getElementById("csvFile").addEventListener("change", function (event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+
+    reader.onload = function (e) {
+        const text = e.target.result;
+        document.getElementById("customerInput").value = text.trim();
+    };
+
+    reader.readAsText(file);
+});
+
+
+document.getElementById("clearBtn").addEventListener("click", () => {
+    document.getElementById("customerInput").value = "";
+});
+
+document.getElementById("runBtn").addEventListener("click", () => {
+    const customers = document.getElementById("customerInput").value.trim();
+    const skip = parseInt(document.getElementById("skipRows").value, 10);
+
+    const lines = input.split("\n");
+
+    const output = lines
+      .slice(skip)
+      .map((line, index) => {
+
+        const [name, location, lat, lon] = line.split(",");
+        const abbrevName = abbreviateBase(name.trim());
+        const stateOrCountry = states[location.trim()] || location.trim();
+
+        const randomIcon = getRandomElement(icons);
+
+        return {
+          id: `base-${index + 1 + skip}`,
+          lat: parseFloat(lat),
+          lon: parseFloat(lon),
+          name: `${abbrevName} ${stateOrCountry}`,
+          desc: extractUniqueValues(customers, name.trim()),
+          cls: "PUBLIC",
+          icon: randomIcon
+        };
+      });
+
+    const rs = {
+      markers: output,
+      shapes: []
+    };
+
+    document.getElementById("showme").value = JSON.stringify(rs, null, 2);
+});
+
+document.getElementById("saveBtn").addEventListener("click", () => {
+    const text = document.getElementById("showme").value;
+
+    const blob = new Blob([text], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "save_output.json";
+    a.click();
+
+    URL.revokeObjectURL(url);
+});
+</script>
+
+</body>
+</html>
